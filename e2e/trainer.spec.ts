@@ -1,5 +1,15 @@
 import { expect, test } from "@playwright/test";
-import { center, drag, expectPiece, expectProgress, square, startTraining, SAMPLE_MAIN, SAMPLE_PGN } from "./helpers";
+import {
+  center,
+  drag,
+  expectPiece,
+  expectProgress,
+  playMainUntil,
+  square,
+  startTraining,
+  SAMPLE_MAIN,
+  SAMPLE_PGN,
+} from "./helpers";
 
 const status = (page: import("@playwright/test").Page) => page.getByTestId("status");
 
@@ -142,10 +152,7 @@ test.describe("playing as white", () => {
     test.setTimeout(90_000);
     await startTraining(page, "white");
     const moves = SAMPLE_MAIN;
-    for (let i = 0; i < moves.length; i += 2) {
-      await drag(page, moves[i].from, moves[i].to);
-      await expectProgress(page, Math.min(i + 2, moves.length));
-    }
+    await playMainUntil(page, "white", moves.length);
     await expect(status(page)).toContainText("Line complete!");
     await expect(page.getByTestId("board")).toHaveAttribute("data-fen", SAMPLE_MAIN.at(-1)!.fen);
     await expect(page.getByTestId("played-move")).toHaveCount(moves.length);
@@ -207,10 +214,7 @@ test("the page never scrolls, in setup or after a full line", async ({ page }) =
   await startTraining(page, "white");
   await noScroll();
   const moves = SAMPLE_MAIN;
-  for (let i = 0; i < moves.length; i += 2) {
-    await drag(page, moves[i].from, moves[i].to);
-    await expectProgress(page, Math.min(i + 2, moves.length));
-  }
+  await playMainUntil(page, "white", moves.length);
   await noScroll();
   // The move list scrolls internally instead.
   const list = page.getByTestId("move-list");

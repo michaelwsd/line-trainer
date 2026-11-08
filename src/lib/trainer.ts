@@ -3,9 +3,6 @@ import { mainLineFrom, type GameTree, type MoveNode, type PositionNode } from ".
 
 export type Color = "white" | "black";
 
-/** How the bot picks its reply when the PGN offers several moves for it. */
-export type OpponentMode = "main" | "random";
-
 export type Feedback = "idle" | "correct" | "variation" | "wrong" | "illegal" | "hint" | "complete";
 
 export interface TrainerState {
@@ -20,17 +17,17 @@ export interface TrainerState {
   /** The last rejected drop, used to flash the target square. Incremented id lets the UI re-trigger the flash. */
   rejected: { square: string; id: number } | null;
   /**
-   * Ply of the position where the user's latest move had sibling moves in the PGN,
+   * Plies of the positions where the latest user move / latest bot move had sibling moves in the PGN,
    * so the UI can offer to play one of those instead. Null when there were none.
    */
-  alternativesAt: number | null;
+  branchAt: { user: number | null; bot: number | null };
 }
 
 export type TrainerAction =
   | { type: "userMove"; from: string; to: string }
   /** `ply` guards against stale timers; `choice` is the index of the PGN move to play. */
   | { type: "botMove"; ply: number; choice: number }
-  /** Rewind to the position at ply `at` (a user turn) and play its `choice`-th PGN move instead. */
+  /** Rewind to the position at ply `at` and play its `choice`-th PGN move instead (for either side). */
   | { type: "playAlternative"; at: number; choice: number }
   | { type: "retract" }
   | { type: "restart" };
@@ -48,9 +45,11 @@ export function initTrainer(tree: GameTree, userColor: Color, path: MoveNode[] =
     hint: null,
     feedback: done ? "complete" : "idle",
     rejected: null,
-    alternativesAt: null,
+    branchAt: NO_BRANCHES,
   };
 }
+
+const NO_BRANCHES = { user: null, bot: null } as const;
 
 export function currentNode(state: TrainerState): PositionNode {
   return state.path.at(-1) ?? state.tree.root;
@@ -87,10 +86,10 @@ export function isVariationMove(state: TrainerState, index: number): boolean {
   return parent.children[0] !== state.path[index];
 }
 
-/** Pick the bot's reply: always the main move, or any PGN move at this position at random. */
-export function chooseBotMove(state: TrainerState, mode: OpponentMode, random: () => number = Math.random): number {
+/** Pick the bot's reply: any PGN move at this position (main line or variation), at random. */
+export function chooseBotMove(state: TrainerState, random: () => number = Math.random): number {
   const count = currentNode(state).children.length;
-  return mode === "random" ? Math.min(count - 1, Math.floor(random() * count)) : 0;
+  return Math.min(count - 1, Math.floor(random() * count));
 }
 
 function isLegal(fen: string, from: string, to: string): boolean {
@@ -98,16 +97,18 @@ function isLegal(fen: string, from: string, to: string): boolean {
   return chess.moves({ square: from as never, verbose: true }).some((m) => m.to === to);
 }
 
-function play(
-  state: TrainerState,
-  node: MoveNode,
-  feedback: Feedback,
-  alternativesAt = state.alternativesAt,
-): TrainerState {
+/** Play `node` from the current position, recording whether the mover had other PGN moves here. */
+function play(state: TrainerState, node: MoveNode, feedback: Feedback): TrainerState {
+  const at = state.path.length;
+  const branching = nodeAt(state, at).children.length > 1 ? at : null;
+  const branchAt =
+    sideToMove(nodeAt(state, at)) === state.userColor
+      ? { user: branching, bot: null } // a new user move makes earlier bot choices stale
+      : { user: state.branchAt.user !== null && state.branchAt.user < at ? state.branchAt.user : null, bot: branching };
   return {
     ...state,
     path: [...state.path, node],
-    alternativesAt,
+    branchAt,
     attempts: 0,
     hint: null,
     rejected: null,
@@ -122,10 +123,7 @@ export function trainerReducer(state: TrainerState, action: TrainerAction): Trai
       const node = currentNode(state);
       // Any move from the PGN at this position counts: the main line or one of its variations.
       const match = node.children.find((c) => c.from === action.from && c.to === action.to);
-      if (match) {
-        const feedback = match === node.children[0] ? "correct" : "variation";
-        return play(state, match, feedback, node.children.length > 1 ? state.path.length : null);
-      }
+      if (match) return play(state, match, match === node.children[0] ? "correct" : "variation");
 
       const attempts = state.attempts + 1;
       const showHint = attempts >= HINT_AFTER_ATTEMPTS;
@@ -149,9 +147,10 @@ export function trainerReducer(state: TrainerState, action: TrainerAction): Trai
       if (at > state.path.length) return state;
       const node = nodeAt(state, at);
       const child = node.children[choice];
-      if (!child || sideToMove(node) !== state.userColor) return state;
+      if (!child) return state;
       const rewound = { ...state, path: state.path.slice(0, at) };
-      return play(rewound, child, child === node.children[0] ? "correct" : "variation", at);
+      const userMove = sideToMove(node) === state.userColor;
+      return play(rewound, child, userMove ? (child === node.children[0] ? "correct" : "variation") : "idle");
     }
     case "retract": {
       const target = retractTarget(state);
@@ -163,7 +162,7 @@ export function trainerReducer(state: TrainerState, action: TrainerAction): Trai
         hint: null,
         rejected: null,
         feedback: "idle",
-        alternativesAt: null,
+        branchAt: NO_BRANCHES,
       };
     }
     case "restart":
@@ -183,9 +182,15 @@ export function retractTarget(state: TrainerState): number | null {
   return null;
 }
 
-/** The other PGN moves the user could have played instead of their latest move, if any. */
-export function alternatives(state: TrainerState): { at: number; moves: { move: MoveNode; choice: number }[] } | null {
-  const at = state.alternativesAt;
+export interface Alternatives {
+  /** Ply of the branching position. */
+  at: number;
+  moves: { move: MoveNode; choice: number }[];
+}
+
+/** The other PGN moves that could have been played instead of the latest user (or bot) move, if any. */
+export function alternatives(state: TrainerState, side: "user" | "bot"): Alternatives | null {
+  const at = state.branchAt[side];
   if (at === null || at >= state.path.length) return null;
   const played = state.path[at];
   const moves = nodeAt(state, at)

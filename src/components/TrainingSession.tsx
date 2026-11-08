@@ -13,7 +13,6 @@ import {
   retractTarget,
   trainerReducer,
   type Color,
-  type OpponentMode,
   type TrainerAction,
   type TrainerState,
 } from "@/lib/trainer";
@@ -27,7 +26,6 @@ const BOT_DELAY_MS = 550;
 interface Props {
   tree: GameTree;
   userColor: Color;
-  opponent: OpponentMode;
   /** Resume from these moves, e.g. after switching language mid-drill. */
   initialPath?: MoveNode[];
   onNewPgn: () => void;
@@ -36,7 +34,7 @@ interface Props {
 
 const opposite = (c: Color): Color => (c === "white" ? "black" : "white");
 
-export function TrainingSession({ tree, userColor, opponent, initialPath, onNewPgn, onPathChange }: Props) {
+export function TrainingSession({ tree, userColor, initialPath, onNewPgn, onPathChange }: Props) {
   const { dict } = useI18n();
   const t = dict.session;
   const [state, setState] = useState<TrainerState>(() => initTrainer(tree, userColor, initialPath));
@@ -49,15 +47,15 @@ export function TrainingSession({ tree, userColor, opponent, initialPath, onNewP
 
   const dispatch = useCallback((action: TrainerAction) => setState((s) => trainerReducer(s, action)), []);
 
-  // The bot replies with a PGN move after a short pause: the main move, or a random variation.
+  // The bot replies after a short pause with a random PGN move here: the main move or any variation.
   const botTurn = isBotTurn(state);
   useEffect(() => {
     if (!botTurn) return;
     const ply = state.path.length;
-    const choice = chooseBotMove(state, opponent);
+    const choice = chooseBotMove(state);
     const timer = setTimeout(() => dispatch({ type: "botMove", ply, choice }), BOT_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [botTurn, state, opponent, dispatch]);
+  }, [botTurn, state, dispatch]);
 
   const canRetract = retractTarget(state) !== null;
   const retract = useCallback(() => dispatch({ type: "retract" }), [dispatch]);

@@ -2,7 +2,8 @@
 
 Paste a PGN, choose White or Black, and drill it. You drag your own pieces; the bot replies with moves from the PGN.
 
-- **Variations count.** Any move from the main line or a (nested) variation in parentheses is accepted, and play continues down that branch. The bot plays the main move of the current branch, or - with "Variations too" - picks among the PGN's side lines at random.
+- **Variations count.** Any move from the main line or a (nested) variation in parentheses is accepted, and play continues down that branch. The bot picks among the PGN's moves for its side at random.
+- **Other moves.** After a move at a branching point, the panel offers the PGN's other moves - yours and the opponent's - so you can switch to a different variation.
 - **Mistakes.** A move in no line is rejected; after a second miss the main move's from/to squares light up.
 - **English and Chinese.** `/en` and `/zh`, chosen from the browser language and remembered after switching. Switching mid-drill keeps your position.
 

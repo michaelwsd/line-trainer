@@ -75,9 +75,9 @@ describe("as White", () => {
 
   it("the bot can take a variation, and the user must then follow that branch", () => {
     let s = advanceMain(initTrainer(tree(), "white"), 9); // after 5. d3
-    expect(chooseBotMove(s, "main")).toBe(0);
-    expect(chooseBotMove(s, "random", () => 0.5)).toBe(1);
-    expect(chooseBotMove(s, "random", () => 0.99)).toBe(2);
+    expect(chooseBotMove(s, () => 0)).toBe(0);
+    expect(chooseBotMove(s, () => 0.5)).toBe(1);
+    expect(chooseBotMove(s, () => 0.99)).toBe(2);
     s = bot(s, 1); // 5... O-O
     expect(sans(s).endsWith("d3 O-O")).toBe(true);
     expect(isVariationMove(s, 9)).toBe(true);
@@ -162,14 +162,14 @@ describe("alternatives", () => {
   it("offers the other PGN moves after the user plays at a branching position", () => {
     let s = advanceMain(initTrainer(tree(), "black"), 9); // after 5. d3
     s = user(s, "h7", "h6"); // main move; O-O and d6 are alternatives
-    const alts = alternatives(s);
+    const alts = alternatives(s, "user");
     expect(alts?.at).toBe(9);
     expect(alts?.moves.map((a) => a.move.san)).toEqual(["O-O", "d6"]);
     expect(alts?.moves.map((a) => a.choice)).toEqual([1, 2]);
 
     // Still offered after the bot replies.
     s = bot(s);
-    expect(alternatives(s)?.at).toBe(9);
+    expect(alternatives(s, "user")?.at).toBe(9);
 
     // Playing one rewinds past the bot reply and takes the other branch.
     s = trainerReducer(s, { type: "playAlternative", at: 9, choice: 1 });
@@ -177,7 +177,7 @@ describe("alternatives", () => {
     expect(s.path).toHaveLength(10);
     expect(s.feedback).toBe("variation");
     expect(isBotTurn(s)).toBe(true);
-    expect(alternatives(s)?.moves.map((a) => a.move.san)).toEqual(["h6", "d6"]);
+    expect(alternatives(s, "user")?.moves.map((a) => a.move.san)).toEqual(["h6", "d6"]);
 
     // Back to the main move.
     s = trainerReducer(s, { type: "playAlternative", at: 9, choice: 0 });
@@ -188,23 +188,58 @@ describe("alternatives", () => {
   it("offers nothing where the PGN has a single move, and clears on retract or restart", () => {
     let s = initTrainer(tree(), "black");
     s = user(bot(s), "e7", "e5");
-    expect(alternatives(s)).toBeNull();
+    expect(alternatives(s, "user")).toBeNull();
 
     s = advanceMain(initTrainer(tree(), "black"), 9);
     s = bot(user(s, "h7", "h6"));
-    expect(alternatives(s)).not.toBeNull();
-    expect(alternatives(trainerReducer(s, { type: "retract" }))).toBeNull();
-    expect(alternatives(trainerReducer(s, { type: "restart" }))).toBeNull();
+    expect(alternatives(s, "user")).not.toBeNull();
+    expect(alternatives(trainerReducer(s, { type: "retract" }), "user")).toBeNull();
+    expect(alternatives(trainerReducer(s, { type: "restart" }), "user")).toBeNull();
     // The next user move without siblings clears it too.
     s = user(s, "d7", "d6");
-    expect(alternatives(s)).toBeNull();
+    expect(alternatives(s, "user")).toBeNull();
+  });
+
+  it("offers the bot's other moves, and switching them rewinds only the bot's move", () => {
+    let s = advanceMain(initTrainer(tree(), "white"), 9); // after 5. d3, bot (Black) to move
+    s = bot(s, 0); // 5... h6
+    const alts = alternatives(s, "bot");
+    expect(alts?.at).toBe(9);
+    expect(alts?.moves.map((a) => a.move.san)).toEqual(["O-O", "d6"]);
+    expect(alternatives(s, "user")).toBeNull(); // 5. d3 had no siblings
+
+    s = trainerReducer(s, { type: "playAlternative", at: 9, choice: 2 }); // make the bot play 5... d6
+    expect(s.path.at(-1)?.san).toBe("d6");
+    expect(isUserTurn(s)).toBe(true);
+    expect(alternatives(s, "bot")?.moves.map((a) => a.move.san)).toEqual(["h6", "O-O"]);
+    s = user(s, "a2", "a4"); // 6. a4 in that line
+    expect(s.feedback).toBe("correct");
+    // The user's next move makes the bot's earlier choice stale.
+    expect(alternatives(s, "bot")).toBeNull();
+  });
+
+  it("keeps the user's alternatives while offering the bot's", () => {
+    // As Black: 5... h6 (user, branching) then the bot replies; if the bot also branched, both are offered.
+    const pgn = "1. e4 (1. d4 d5) 1... e5 (1... c5 2. Nf3) 2. Nf3 (2. Bc4) 2... Nc6 *";
+    let s = initTrainer(tree(pgn), "black");
+    s = bot(s, 0); // 1. e4 (bot branched: 1. d4)
+    expect(alternatives(s, "bot")?.moves.map((a) => a.move.san)).toEqual(["d4"]);
+    s = user(s, "e7", "e5"); // user branched: 1... c5
+    expect(alternatives(s, "user")?.moves.map((a) => a.move.san)).toEqual(["c5"]);
+    expect(alternatives(s, "bot")).toBeNull();
+    s = bot(s, 0); // 2. Nf3 (bot branched: 2. Bc4)
+    expect(alternatives(s, "user")?.moves.map((a) => a.move.san)).toEqual(["c5"]);
+    expect(alternatives(s, "bot")?.moves.map((a) => a.move.san)).toEqual(["Bc4"]);
+    // Switching the user's move discards the bot's reply and its alternatives.
+    s = trainerReducer(s, { type: "playAlternative", at: 1, choice: 1 });
+    expect(s.path.map((m) => m.san)).toEqual(["e4", "c5"]);
+    expect(alternatives(s, "bot")).toBeNull();
   });
 
   it("rejects invalid alternative requests", () => {
     let s = advanceMain(initTrainer(tree(), "black"), 9);
     s = user(s, "h7", "h6");
     expect(trainerReducer(s, { type: "playAlternative", at: 9, choice: 7 })).toBe(s);
-    expect(trainerReducer(s, { type: "playAlternative", at: 8, choice: 0 })).toBe(s); // White's turn there
     expect(trainerReducer(s, { type: "playAlternative", at: 40, choice: 0 })).toBe(s);
   });
 });

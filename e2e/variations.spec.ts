@@ -67,21 +67,34 @@ test.describe("variations", () => {
     }
   });
 
-  test("with 'Variations too' the bot may pick a side line, and the user must follow it", async ({ page }) => {
-    await startTraining(page, "white", { opponent: "random" });
+  test("the bot plays a random PGN move, and the user can make it play another", async ({ page }) => {
+    await startTraining(page, "white");
     await playMainUntil(page, "white", 9); // through 5. d3; the bot picks 5... h6 / O-O / d6
     await expectProgress(page, 10);
     const reply = await page.getByTestId("played-move").last().textContent();
     expect(["h6", "O-O", "d6"]).toContain(reply);
 
-    if (reply === "d6") {
+    // The two moves the bot did not play are offered.
+    const botAlts = page.getByTestId("alternatives-bot");
+    const others = ["5... h6", "5... O-O", "5... d6"].filter((l) => !l.endsWith(` ${reply}`));
+    await expect(botAlts.getByRole("button")).toHaveText(others);
+    await expect(page.getByTestId("alternatives-user")).toHaveCount(0);
+
+    // Make the bot play 5... d6 (or h6 if it already chose d6), then answer in that line.
+    const target = reply === "d6" ? "5... h6" : "5... d6";
+    await botAlts.getByRole("button", { name: `Have the opponent play ${target} instead` }).click();
+    await expectProgress(page, 10);
+    if (target === "5... d6") {
+      await expectPiece(page, "d6", "bP");
       await drag(page, "a2", "a4"); // 6. a4 in the 5... d6 line
       await expectPiece(page, "a4", "wP");
     } else {
-      await drag(page, "e1", "g1"); // 6. O-O in both other lines
+      await expectPiece(page, "h6", "bP");
+      await drag(page, "e1", "g1"); // 6. O-O
       await expectPiece(page, "g1", "wK");
     }
-    await expectProgress(page, 12);
+    // The user's next move clears the bot's offer.
+    await expect(page.getByTestId("alternatives-bot")).toHaveCount(0);
   });
 
   test("switching language keeps a side-line position", async ({ page }) => {
@@ -113,7 +126,7 @@ test.describe("variations", () => {
     await playMainUntil(page, "black", 9);
     await drag(page, "h7", "h6");
     await expect(alts).toBeVisible();
-    await expect(alts).toContainText("Other moves here");
+    await expect(alts).toContainText("Your other moves");
     await expect(alts.getByRole("button")).toHaveText(["5... O-O", "5... d6"]);
 
     // Still offered once the bot has replied (6. O-O).
@@ -153,7 +166,7 @@ test.describe("variations", () => {
     await expect(page).toHaveURL(/\/zh$/);
     await drag(page, "h7", "h6");
     const alts = page.getByTestId("alternatives");
-    await expect(alts).toContainText("此处还有其他着法");
+    await expect(alts).toContainText("你的其他着法");
     await alts.getByRole("button", { name: "改走 5... d6" }).click();
     await expectPiece(page, "d6", "bP");
   });

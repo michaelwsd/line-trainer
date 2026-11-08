@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/i18n/I18nProvider";
 import { saveHandoff, takeHandoff } from "@/lib/handoff";
 import { parsePgnTree, type GameTree, type MoveNode } from "@/lib/pgn";
-import { indicesToPath, pathToIndices, type Color, type OpponentMode } from "@/lib/trainer";
+import { indicesToPath, pathToIndices, type Color } from "@/lib/trainer";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { PgnSetup } from "./PgnSetup";
 import { TrainingSession } from "./TrainingSession";
@@ -12,7 +12,6 @@ import { TrainingSession } from "./TrainingSession";
 interface Session {
   tree: GameTree;
   userColor: Color;
-  opponent: OpponentMode;
   initialPath: MoveNode[];
   /** Bumped on every start so the session remounts with fresh state. */
   id: number;
@@ -22,7 +21,6 @@ export function TrainerApp() {
   const { dict } = useI18n();
   const [pgn, setPgn] = useState("");
   const [color, setColor] = useState<Color>("white");
-  const [opponent, setOpponent] = useState<OpponentMode>("main");
   const [session, setSession] = useState<Session | null>(null);
   const pathRef = useRef<MoveNode[]>([]);
 
@@ -33,12 +31,11 @@ export function TrainerApp() {
     /* eslint-disable react-hooks/set-state-in-effect -- sessionStorage is only readable after hydration */
     setPgn(handoff.pgn);
     setColor(handoff.color);
-    setOpponent(handoff.opponent);
     if (handoff.path !== null) {
       const parsed = parsePgnTree(handoff.pgn);
       const initialPath = parsed.ok ? indicesToPath(parsed.tree, handoff.path) : null;
       if (parsed.ok && initialPath) {
-        setSession({ tree: parsed.tree, userColor: handoff.color, opponent: handoff.opponent, initialPath, id: 1 });
+        setSession({ tree: parsed.tree, userColor: handoff.color, initialPath, id: 1 });
       }
     }
     /* eslint-enable react-hooks/set-state-in-effect */
@@ -65,7 +62,6 @@ export function TrainerApp() {
             saveHandoff({
               pgn,
               color,
-              opponent,
               path: session ? pathToIndices(session.tree, pathRef.current) : null,
             })
           }
@@ -81,7 +77,6 @@ export function TrainerApp() {
             key={session.id}
             tree={session.tree}
             userColor={session.userColor}
-            opponent={session.opponent}
             initialPath={session.initialPath}
             onPathChange={onPathChange}
             onNewPgn={() => setSession(null)}
@@ -90,13 +85,9 @@ export function TrainerApp() {
           <PgnSetup
             pgn={pgn}
             color={color}
-            opponent={opponent}
             onPgnChange={setPgn}
             onColorChange={setColor}
-            onOpponentChange={setOpponent}
-            onStart={(tree) =>
-              setSession((s) => ({ tree, userColor: color, opponent, initialPath: [], id: (s?.id ?? 0) + 1 }))
-            }
+            onStart={(tree) => setSession((s) => ({ tree, userColor: color, initialPath: [], id: (s?.id ?? 0) + 1 }))}
           />
         )}
       </main>

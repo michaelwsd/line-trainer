@@ -1,4 +1,4 @@
-import type { Color, OpponentMode } from "./trainer";
+import type { Color } from "./trainer";
 
 /**
  * Switching language loads a different route, which remounts the app.
@@ -8,7 +8,6 @@ import type { Color, OpponentMode } from "./trainer";
 export interface Handoff {
   pgn: string;
   color: Color;
-  opponent: OpponentMode;
   /** Moves played as child indices into the game tree; present when a drill was in progress. */
   path: number[] | null;
 }
@@ -30,9 +29,8 @@ export function takeHandoff(): Handoff | null {
     sessionStorage.removeItem(KEY);
     const data = JSON.parse(raw) as Partial<Handoff>;
     if (typeof data.pgn !== "string" || (data.color !== "white" && data.color !== "black")) return null;
-    const opponent = data.opponent === "random" ? "random" : "main";
     const path = Array.isArray(data.path) && data.path.every((i) => Number.isInteger(i) && i >= 0) ? data.path : null;
-    return { pgn: data.pgn, color: data.color, opponent, path };
+    return { pgn: data.pgn, color: data.color, path };
   } catch {
     return null;
   }

@@ -5,19 +5,17 @@ import { defaultPieces } from "react-chessboard";
 import { SAMPLE_PGN } from "@/lib/sample";
 import { format, useI18n } from "@/i18n/I18nProvider";
 import { parsePgnTree, type GameTree, type PgnError } from "@/lib/pgn";
-import type { Color, OpponentMode } from "@/lib/trainer";
+import type { Color } from "@/lib/trainer";
 
 interface Props {
   pgn: string;
   color: Color;
-  opponent: OpponentMode;
   onPgnChange: (pgn: string) => void;
   onColorChange: (color: Color) => void;
-  onOpponentChange: (mode: OpponentMode) => void;
   onStart: (tree: GameTree) => void;
 }
 
-export function PgnSetup({ pgn, color, opponent, onPgnChange, onColorChange, onOpponentChange, onStart }: Props) {
+export function PgnSetup({ pgn, color, onPgnChange, onColorChange, onStart }: Props) {
   const { dict } = useI18n();
   const t = dict.setup;
   // Kept as a code (not a string) so the message follows the active language.
@@ -121,44 +119,6 @@ export function PgnSetup({ pgn, color, opponent, onPgnChange, onColorChange, onO
           })}
         </div>
       </fieldset>
-
-      <div className="mt-4 shrink-0">
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          <span id="opponent-label" className="font-display text-base font-semibold text-ink">
-            {t.opponent}
-          </span>
-          <div
-            role="radiogroup"
-            aria-labelledby="opponent-label"
-            className="flex rounded-lg border border-line bg-[#1a120c] p-0.5 text-sm"
-          >
-            {(["main", "random"] as const).map((mode) => {
-              const selected = opponent === mode;
-              return (
-                <label
-                  key={mode}
-                  className={`cursor-pointer rounded-md px-3 py-1.5 font-medium transition has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brass/50 ${
-                    selected ? "bg-brass/20 text-brass-bright" : "text-ink-soft hover:text-ink"
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="opponent"
-                    value={mode}
-                    checked={selected}
-                    onChange={() => onOpponentChange(mode)}
-                    className="sr-only"
-                  />
-                  {mode === "main" ? t.opponentMain : t.opponentRandom}
-                </label>
-              );
-            })}
-          </div>
-        </div>
-        <p className="mt-1.5 text-xs text-ink-faint">
-          {opponent === "main" ? t.opponentMainHint : t.opponentRandomHint}
-        </p>
-      </div>
 
       <button
         type="submit"
