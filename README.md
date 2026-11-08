@@ -1,6 +1,10 @@
 # Line Trainer
 
-Paste a PGN, choose White or Black, and drill the main line. The bot plays the opponent's moves from the PGN; you drag your own pieces. A wrong move is rejected, and after a second miss the correct from/to squares light up. Variations in parentheses are ignored.
+Paste a PGN, choose White or Black, and drill it. You drag your own pieces; the bot replies with moves from the PGN.
+
+- **Variations count.** Any move from the main line or a (nested) variation in parentheses is accepted, and play continues down that branch. The bot plays the main move of the current branch, or - with "Variations too" - picks among the PGN's side lines at random.
+- **Mistakes.** A move in no line is rejected; after a second miss the main move's from/to squares light up.
+- **English and Chinese.** `/en` and `/zh`, chosen from the browser language and remembered after switching. Switching mid-drill keeps your position.
 
 ## Scripts
 
@@ -14,4 +18,5 @@ Paste a PGN, choose White or Black, and drill the main line. The bot plays the o
 | `npm run typecheck` | TypeScript                                            |
 
 Keyboard: `←` take back, `F` flip board.
+
 # line-trainer

@@ -2,46 +2,62 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Chessboard, type PieceDropHandlerArgs, type PieceHandlerArgs } from "react-chessboard";
+import type { GameTree, MoveNode } from "@/lib/pgn";
 import {
+  chooseBotMove,
   currentFen,
   initTrainer,
   isBotTurn,
-  isComplete,
   isUserTurn,
+  remainingPlies,
   retractTarget,
   trainerReducer,
   type Color,
-  type ParsedLine,
+  type OpponentMode,
   type TrainerAction,
   type TrainerState,
 } from "@/lib/trainer";
+import { format, useI18n } from "@/i18n/I18nProvider";
+import { AlternativeMoves } from "./AlternativeMoves";
 import { MoveList } from "./MoveList";
 import { StatusBanner } from "./StatusBanner";
 
 const BOT_DELAY_MS = 550;
 
 interface Props {
-  line: ParsedLine;
+  tree: GameTree;
   userColor: Color;
+  opponent: OpponentMode;
+  /** Resume from these moves, e.g. after switching language mid-drill. */
+  initialPath?: MoveNode[];
   onNewPgn: () => void;
+  onPathChange?: (path: MoveNode[]) => void;
 }
 
 const opposite = (c: Color): Color => (c === "white" ? "black" : "white");
 
-export function TrainingSession({ line, userColor, onNewPgn }: Props) {
-  const [state, setState] = useState<TrainerState>(() => initTrainer(line, userColor));
+export function TrainingSession({ tree, userColor, opponent, initialPath, onNewPgn, onPathChange }: Props) {
+  const { dict } = useI18n();
+  const t = dict.session;
+  const [state, setState] = useState<TrainerState>(() => initTrainer(tree, userColor, initialPath));
+
+  useEffect(() => {
+    onPathChange?.(state.path);
+  }, [state.path, onPathChange]);
   const [flipped, setFlipped] = useState(false);
   const orientation = flipped ? opposite(userColor) : userColor;
 
   const dispatch = useCallback((action: TrainerAction) => setState((s) => trainerReducer(s, action)), []);
 
-  // The bot replies with the next PGN move after a short pause.
-  const botPly = isBotTurn(state) ? state.ply : null;
+  // The bot replies with a PGN move after a short pause: the main move, or a random variation.
+  const botTurn = isBotTurn(state);
   useEffect(() => {
-    if (botPly === null) return;
-    const t = setTimeout(() => dispatch({ type: "botMove", ply: botPly }), BOT_DELAY_MS);
-    return () => clearTimeout(t);
-  }, [botPly, dispatch]);
+    if (!botTurn) return;
+    const ply = state.path.length;
+    const choice = chooseBotMove(state, opponent);
+    const timer = setTimeout(() => dispatch({ type: "botMove", ply, choice }), BOT_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [botTurn, state, opponent, dispatch]);
 
   const canRetract = retractTarget(state) !== null;
   const retract = useCallback(() => dispatch({ type: "retract" }), [dispatch]);
@@ -67,7 +83,7 @@ export function TrainingSession({ line, userColor, onNewPgn }: Props) {
     const action: TrainerAction = { type: "userMove", from: sourceSquare, to: targetSquare };
     const next = trainerReducer(state, action);
     setState(next);
-    return next.ply > state.ply;
+    return next.path.length > state.path.length;
   }
 
   function canDragPiece({ piece }: PieceHandlerArgs): boolean {
@@ -75,7 +91,7 @@ export function TrainingSession({ line, userColor, onNewPgn }: Props) {
   }
 
   const squareStyles: Record<string, React.CSSProperties> = {};
-  const last = state.ply > 0 ? line.moves[state.ply - 1] : null;
+  const last = state.path.at(-1);
   if (last) {
     squareStyles[last.from] = { backgroundColor: "rgba(232, 196, 80, 0.38)" };
     squareStyles[last.to] = { backgroundColor: "rgba(232, 196, 80, 0.5)" };
@@ -92,8 +108,10 @@ export function TrainingSession({ line, userColor, onNewPgn }: Props) {
     squareStyles[state.hint.to] = hint;
   }
 
-  const total = line.moves.length;
-  const progress = Math.round((state.ply / total) * 100);
+  // Total follows the branch being played: moves so far plus the rest of this branch's main line.
+  const played = state.path.length;
+  const total = played + remainingPlies(state);
+  const progress = Math.round((played / total) * 100);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-8">
@@ -134,13 +152,13 @@ export function TrainingSession({ line, userColor, onNewPgn }: Props) {
         </div>
       </div>
 
-      <aside className="flex min-h-0 flex-1 flex-col gap-3 rounded-2xl border border-line bg-panel p-4 shadow-[0_30px_60px_-30px_rgba(0,0,0,0.8)] sm:gap-4 sm:p-5 lg:w-[340px] lg:flex-none">
-        <div className="flex shrink-0 items-center justify-between text-xs uppercase tracking-[0.14em] text-ink-soft">
-          <span>
-            Playing <span className="font-semibold text-ink">{userColor}</span>
+      <aside className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto overscroll-contain rounded-2xl border border-line bg-panel p-3 shadow-[0_30px_60px_-30px_rgba(0,0,0,0.8)] sm:gap-4 sm:p-5 lg:w-[340px] lg:flex-none">
+        <div className="flex shrink-0 items-center justify-between text-xs caps-label text-ink-soft">
+          <span className="font-semibold text-ink">
+            {format(t.playing, { color: userColor === "white" ? t.white : t.black })}
           </span>
           <span data-testid="progress">
-            {state.ply} / {total}
+            {played} / {total}
           </span>
         </div>
         <div className="h-1.5 shrink-0 overflow-hidden rounded-full bg-black/40" aria-hidden>
@@ -151,15 +169,16 @@ export function TrainingSession({ line, userColor, onNewPgn }: Props) {
         </div>
 
         <StatusBanner state={state} />
+        <AlternativeMoves state={state} onPlay={(at, choice) => dispatch({ type: "playAlternative", at, choice })} />
 
         <div className="grid shrink-0 grid-cols-4 gap-2 lg:grid-cols-2">
-          <ControlButton onClick={flip} label="Flip board" shortcut="F" icon={<FlipIcon />} />
-          <ControlButton onClick={retract} disabled={!canRetract} label="Take back" shortcut="←" icon={<UndoIcon />} />
-          <ControlButton onClick={() => dispatch({ type: "restart" })} label="Restart" icon={<RestartIcon />} />
-          <ControlButton onClick={onNewPgn} label="New PGN" icon={<PasteIcon />} />
+          <ControlButton onClick={flip} label={t.flip} shortcut="F" icon={<FlipIcon />} />
+          <ControlButton onClick={retract} disabled={!canRetract} label={t.takeBack} shortcut="←" icon={<UndoIcon />} />
+          <ControlButton onClick={() => dispatch({ type: "restart" })} label={t.restart} icon={<RestartIcon />} />
+          <ControlButton onClick={onNewPgn} label={t.newPgn} icon={<PasteIcon />} />
         </div>
 
-        <MoveList line={line} ply={state.ply} userColor={userColor} complete={isComplete(state)} />
+        <MoveList state={state} />
       </aside>
     </div>
   );
@@ -184,7 +203,7 @@ function ControlButton({
       onClick={onClick}
       disabled={disabled}
       title={shortcut ? `${label} (${shortcut})` : label}
-      className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-line bg-panel-raised px-2 py-2 text-xs font-medium text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:border-brass/60 hover:bg-[#3d2e22] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:border-line disabled:hover:bg-panel-raised sm:flex-row sm:gap-2 sm:px-3 sm:py-2.5 sm:text-sm"
+      className="flex cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border border-line bg-panel-raised px-2 py-1.5 text-xs font-medium text-ink shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition hover:border-brass/60 hover:bg-[#3d2e22] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:border-line disabled:hover:bg-panel-raised sm:flex-row sm:gap-2 sm:px-3 sm:py-2.5 sm:text-sm"
     >
       <span className="h-4 w-4 shrink-0 text-brass" aria-hidden>
         {icon}

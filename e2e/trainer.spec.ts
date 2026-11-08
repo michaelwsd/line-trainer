@@ -1,20 +1,19 @@
 import { expect, test } from "@playwright/test";
-import { parsePgn } from "../src/lib/trainer";
-import { center, drag, expectPiece, expectProgress, square, startTraining, SAMPLE_PGN } from "./helpers";
+import { center, drag, expectPiece, expectProgress, square, startTraining, SAMPLE_MAIN, SAMPLE_PGN } from "./helpers";
 
 const status = (page: import("@playwright/test").Page) => page.getByTestId("status");
 
 test.describe("setup", () => {
   test("shows an error for invalid PGN and stays on setup", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/en");
     await page.getByLabel("Your game").fill("1. e4 e5 2. Ke3 Qxz9");
     await page.getByRole("button", { name: "Start training" }).click();
-    await expect(page.locator("#pgn-error")).toContainText("Could not read that PGN");
+    await expect(page.locator("#pgn-error")).toHaveText('Move 2: "Ke3" is not legal in that position.');
     await expect(page.getByTestId("board")).toHaveCount(0);
   });
 
   test("setup card is centered in the viewport", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/en");
     const box = await page.locator("form").boundingBox();
     const vp = page.viewportSize()!;
     expect(Math.abs(box!.y + box!.height / 2 - vp.height / 2)).toBeLessThanOrEqual(4);
@@ -22,7 +21,7 @@ test.describe("setup", () => {
   });
 
   test("load example fills the textarea", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("/en");
     await page.getByRole("button", { name: "Load example" }).click();
     await expect(page.getByLabel("Your game")).toHaveValue(SAMPLE_PGN);
   });
@@ -141,17 +140,16 @@ test.describe("playing as white", () => {
 
   test("plays the whole line to completion", async ({ page }) => {
     test.setTimeout(90_000);
-    const parsed = parsePgn(SAMPLE_PGN);
-    if (!parsed.ok) throw new Error(parsed.error);
     await startTraining(page, "white");
-    const moves = parsed.line.moves;
+    const moves = SAMPLE_MAIN;
     for (let i = 0; i < moves.length; i += 2) {
       await drag(page, moves[i].from, moves[i].to);
       await expectProgress(page, Math.min(i + 2, moves.length));
     }
     await expect(status(page)).toContainText("Line complete!");
-    await expect(page.getByTestId("board")).toHaveAttribute("data-fen", parsed.line.fens.at(-1)!);
+    await expect(page.getByTestId("board")).toHaveAttribute("data-fen", SAMPLE_MAIN.at(-1)!.fen);
     await expect(page.getByTestId("played-move")).toHaveCount(moves.length);
+    await expect(page.getByTestId("played-move").last()).toBeInViewport();
 
     await page.getByRole("button", { name: "Restart" }).click();
     await expectProgress(page, 0);
@@ -202,15 +200,13 @@ test("the page never scrolls, in setup or after a full line", async ({ page }) =
     expect(sw).toBeLessThanOrEqual(w);
     expect(sh).toBeLessThanOrEqual(h);
   };
-  await page.goto("/");
+  await page.goto("/en");
   await page.getByRole("button", { name: "Load example" }).click();
   await noScroll();
 
-  const parsed = parsePgn(SAMPLE_PGN);
-  if (!parsed.ok) throw new Error(parsed.error);
   await startTraining(page, "white");
   await noScroll();
-  const moves = parsed.line.moves;
+  const moves = SAMPLE_MAIN;
   for (let i = 0; i < moves.length; i += 2) {
     await drag(page, moves[i].from, moves[i].to);
     await expectProgress(page, Math.min(i + 2, moves.length));

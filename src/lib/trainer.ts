@@ -1,117 +1,96 @@
 import { Chess } from "chess.js";
+import { mainLineFrom, type GameTree, type MoveNode, type PositionNode } from "./pgn";
 
 export type Color = "white" | "black";
 
-export interface LineMove {
-  san: string;
-  from: string;
-  to: string;
-  promotion?: string;
-  color: "w" | "b";
-}
+/** How the bot picks its reply when the PGN offers several moves for it. */
+export type OpponentMode = "main" | "random";
 
-export interface ParsedLine {
-  moves: LineMove[];
-  /** fens[i] is the position after i plies; fens[0] is the start position. */
-  fens: string[];
-  headers: Record<string, string>;
-}
-
-export type ParseResult = { ok: true; line: ParsedLine } | { ok: false; error: string };
-
-/**
- * Parse PGN text into its main line. Variations in parentheses, comments and
- * NAGs are discarded: the trainer strictly follows the main line.
- */
-export function parsePgn(text: string): ParseResult {
-  const trimmed = text.trim();
-  if (!trimmed) return { ok: false, error: "Paste a PGN to get started." };
-
-  const chess = new Chess();
-  try {
-    chess.loadPgn(trimmed);
-  } catch (err) {
-    const detail = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: `Could not read that PGN: ${detail}` };
-  }
-
-  const history = chess.history({ verbose: true });
-  if (history.length === 0) {
-    return { ok: false, error: "That PGN does not contain any moves." };
-  }
-
-  const fens = [history[0].before, ...history.map((m) => m.after)];
-  const moves: LineMove[] = history.map((m) => ({
-    san: m.san,
-    from: m.from,
-    to: m.to,
-    promotion: m.promotion,
-    color: m.color,
-  }));
-
-  const headers: Record<string, string> = {};
-  for (const [k, v] of Object.entries(chess.getHeaders())) {
-    if (typeof v === "string") headers[k] = v;
-  }
-
-  return { ok: true, line: { moves, fens, headers } };
-}
-
-/** Color to move at a given ply, accounting for PGNs that start from a FEN with Black to move. */
-export function sideToMove(line: ParsedLine, ply: number): Color {
-  const turn = line.fens[ply].split(" ")[1];
-  return turn === "b" ? "black" : "white";
-}
-
-export type Feedback = "idle" | "correct" | "wrong" | "illegal" | "hint" | "complete";
+export type Feedback = "idle" | "correct" | "variation" | "wrong" | "illegal" | "hint" | "complete";
 
 export interface TrainerState {
-  line: ParsedLine;
+  tree: GameTree;
   userColor: Color;
-  ply: number;
-  /** Wrong attempts made at the current ply. */
+  /** Moves played so far, from the start position. */
+  path: MoveNode[];
+  /** Wrong attempts made at the current position. */
   attempts: number;
   hint: { from: string; to: string } | null;
   feedback: Feedback;
   /** The last rejected drop, used to flash the target square. Incremented id lets the UI re-trigger the flash. */
   rejected: { square: string; id: number } | null;
+  /**
+   * Ply of the position where the user's latest move had sibling moves in the PGN,
+   * so the UI can offer to play one of those instead. Null when there were none.
+   */
+  alternativesAt: number | null;
 }
 
 export type TrainerAction =
   | { type: "userMove"; from: string; to: string }
-  | { type: "botMove"; ply: number }
+  /** `ply` guards against stale timers; `choice` is the index of the PGN move to play. */
+  | { type: "botMove"; ply: number; choice: number }
+  /** Rewind to the position at ply `at` (a user turn) and play its `choice`-th PGN move instead. */
+  | { type: "playAlternative"; at: number; choice: number }
   | { type: "retract" }
   | { type: "restart" };
 
 /** Number of wrong attempts after which the correct squares are revealed. */
 export const HINT_AFTER_ATTEMPTS = 2;
 
-export function initTrainer(line: ParsedLine, userColor: Color): TrainerState {
+export function initTrainer(tree: GameTree, userColor: Color, path: MoveNode[] = []): TrainerState {
+  const done = (path.at(-1) ?? tree.root).children.length === 0;
   return {
-    line,
+    tree,
     userColor,
-    ply: 0,
+    path,
     attempts: 0,
     hint: null,
-    feedback: "idle",
+    feedback: done ? "complete" : "idle",
     rejected: null,
+    alternativesAt: null,
   };
 }
 
-export function isComplete(state: TrainerState): boolean {
-  return state.ply >= state.line.moves.length;
-}
-
-export function isUserTurn(state: TrainerState): boolean {
-  return !isComplete(state) && sideToMove(state.line, state.ply) === state.userColor;
-}
-
-export function isBotTurn(state: TrainerState): boolean {
-  return !isComplete(state) && sideToMove(state.line, state.ply) !== state.userColor;
+export function currentNode(state: TrainerState): PositionNode {
+  return state.path.at(-1) ?? state.tree.root;
 }
 
 export function currentFen(state: TrainerState): string {
-  return state.line.fens[state.ply];
+  return currentNode(state).fen;
+}
+
+export function sideToMove(node: PositionNode): Color {
+  return node.fen.split(" ")[1] === "b" ? "black" : "white";
+}
+
+export function isComplete(state: TrainerState): boolean {
+  return currentNode(state).children.length === 0;
+}
+
+export function isUserTurn(state: TrainerState): boolean {
+  return !isComplete(state) && sideToMove(currentNode(state)) === state.userColor;
+}
+
+export function isBotTurn(state: TrainerState): boolean {
+  return !isComplete(state) && sideToMove(currentNode(state)) !== state.userColor;
+}
+
+/** Plies left if play continues along the main line of the current branch. */
+export function remainingPlies(state: TrainerState): number {
+  return mainLineFrom(currentNode(state)).length;
+}
+
+/** Whether the move at `index` in the path was a side line rather than the main continuation. */
+export function isVariationMove(state: TrainerState, index: number): boolean {
+  const parent = index === 0 ? state.tree.root : state.path[index - 1];
+  return parent.children[0] !== state.path[index];
+}
+
+/** Pick the bot's reply: always the main move, or any PGN move at this position at random. */
+export function chooseBotMove(state: TrainerState, mode: OpponentMode, random: () => number = Math.random): number {
+  const count = currentNode(state).children.length;
+  return mode === "random" ? Math.min(count - 1, Math.floor(random() * count)) : 0;
 }
 
 function isLegal(fen: string, from: string, to: string): boolean {
@@ -119,16 +98,20 @@ function isLegal(fen: string, from: string, to: string): boolean {
   return chess.moves({ square: from as never, verbose: true }).some((m) => m.to === to);
 }
 
-function advance(state: TrainerState): TrainerState {
-  const ply = state.ply + 1;
-  const done = ply >= state.line.moves.length;
+function play(
+  state: TrainerState,
+  node: MoveNode,
+  feedback: Feedback,
+  alternativesAt = state.alternativesAt,
+): TrainerState {
   return {
     ...state,
-    ply,
+    path: [...state.path, node],
+    alternativesAt,
     attempts: 0,
     hint: null,
     rejected: null,
-    feedback: done ? "complete" : state.feedback,
+    feedback: node.children.length === 0 ? "complete" : feedback,
   };
 }
 
@@ -136,40 +119,100 @@ export function trainerReducer(state: TrainerState, action: TrainerAction): Trai
   switch (action.type) {
     case "userMove": {
       if (!isUserTurn(state)) return state;
-      const expected = state.line.moves[state.ply];
-      if (action.from === expected.from && action.to === expected.to) {
-        return advance({ ...state, feedback: "correct" });
+      const node = currentNode(state);
+      // Any move from the PGN at this position counts: the main line or one of its variations.
+      const match = node.children.find((c) => c.from === action.from && c.to === action.to);
+      if (match) {
+        const feedback = match === node.children[0] ? "correct" : "variation";
+        return play(state, match, feedback, node.children.length > 1 ? state.path.length : null);
       }
+
       const attempts = state.attempts + 1;
       const showHint = attempts >= HINT_AFTER_ATTEMPTS;
-      const legal = isLegal(currentFen(state), action.from, action.to);
+      const main = node.children[0];
       return {
         ...state,
         attempts,
-        hint: showHint ? { from: expected.from, to: expected.to } : null,
-        feedback: showHint ? "hint" : legal ? "wrong" : "illegal",
+        hint: showHint ? { from: main.from, to: main.to } : null,
+        feedback: showHint ? "hint" : isLegal(node.fen, action.from, action.to) ? "wrong" : "illegal",
         rejected: { square: action.to, id: (state.rejected?.id ?? 0) + 1 },
       };
     }
     case "botMove": {
-      // Ignore stale timers: only play if the board is still at the ply the bot was scheduled for.
-      if (action.ply !== state.ply || !isBotTurn(state)) return state;
-      return advance(state);
+      if (action.ply !== state.path.length || !isBotTurn(state)) return state;
+      const child = currentNode(state).children[action.choice];
+      if (!child) return state;
+      return play(state, child, state.feedback);
+    }
+    case "playAlternative": {
+      const { at, choice } = action;
+      if (at > state.path.length) return state;
+      const node = nodeAt(state, at);
+      const child = node.children[choice];
+      if (!child || sideToMove(node) !== state.userColor) return state;
+      const rewound = { ...state, path: state.path.slice(0, at) };
+      return play(rewound, child, child === node.children[0] ? "correct" : "variation", at);
     }
     case "retract": {
       const target = retractTarget(state);
       if (target === null) return state;
-      return { ...state, ply: target, attempts: 0, hint: null, rejected: null, feedback: "idle" };
+      return {
+        ...state,
+        path: state.path.slice(0, target),
+        attempts: 0,
+        hint: null,
+        rejected: null,
+        feedback: "idle",
+        alternativesAt: null,
+      };
     }
     case "restart":
-      return initTrainer(state.line, state.userColor);
+      return initTrainer(state.tree, state.userColor);
   }
+}
+
+function nodeAt(state: TrainerState, ply: number): PositionNode {
+  return ply === 0 ? state.tree.root : state.path[ply - 1];
 }
 
 /** The most recent earlier ply at which it was the user's turn, or null if there is none. */
 export function retractTarget(state: TrainerState): number | null {
-  for (let p = state.ply - 1; p >= 0; p--) {
-    if (sideToMove(state.line, p) === state.userColor) return p;
+  for (let p = state.path.length - 1; p >= 0; p--) {
+    if (sideToMove(nodeAt(state, p)) === state.userColor) return p;
   }
   return null;
+}
+
+/** The other PGN moves the user could have played instead of their latest move, if any. */
+export function alternatives(state: TrainerState): { at: number; moves: { move: MoveNode; choice: number }[] } | null {
+  const at = state.alternativesAt;
+  if (at === null || at >= state.path.length) return null;
+  const played = state.path[at];
+  const moves = nodeAt(state, at)
+    .children.map((move, choice) => ({ move, choice }))
+    .filter(({ move }) => move !== played);
+  return moves.length ? { at, moves } : null;
+}
+
+/** Encode a path as child indices (serializable, e.g. for sessionStorage), and back. */
+export function pathToIndices(tree: GameTree, path: MoveNode[]): number[] {
+  const out: number[] = [];
+  let node: PositionNode = tree.root;
+  for (const move of path) {
+    out.push(node.children.indexOf(move));
+    node = move;
+  }
+  return out;
+}
+
+export function indicesToPath(tree: GameTree, indices: number[]): MoveNode[] | null {
+  const path: MoveNode[] = [];
+  let node: PositionNode = tree.root;
+  for (const i of indices) {
+    const next = node.children[i];
+    if (!next) return null;
+    path.push(next);
+    node = next;
+  }
+  return path;
 }

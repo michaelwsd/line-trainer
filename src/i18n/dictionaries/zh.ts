@@ -1,0 +1,68 @@
+import type { Dictionary } from "./en";
+
+const zh: Dictionary = {
+  meta: {
+    title: "棋谱陪练 - 国际象棋练习",
+    description: "粘贴 PGN 棋谱，执一方逐步走棋，机器人按棋谱应对另一方。",
+  },
+  app: {
+    name: "棋谱陪练",
+    tagline: "粘贴棋谱，执一方走棋，烂熟于心。",
+    language: "语言",
+  },
+  setup: {
+    gameLabel: "你的棋谱",
+    loadExample: "加载示例",
+    help: "粘贴 PGN 文本。括号中的变着同样算作正确着法。",
+    playAs: "执棋方",
+    white: "白方",
+    black: "黑方",
+    whiteHint: "你先走",
+    blackHint: "机器人先走",
+    opponent: "对手走法",
+    opponentMain: "只走主线",
+    opponentRandom: "包含变着",
+    opponentMainHint: "机器人总是走主线着法。",
+    opponentRandomHint: "机器人会在棋谱的变着中随机选择。",
+    start: "开始训练",
+    errors: {
+      empty: "请先粘贴 PGN 棋谱。",
+      noMoves: "该 PGN 中没有任何着法。",
+      syntax: "无法读取该 PGN - 请检查括号和着法文本。",
+      illegalMove: "第 {n} 步：“{san}” 在该局面下不合规则。",
+    },
+  },
+  session: {
+    playing: "执{color}",
+    white: "白",
+    black: "黑",
+    moves: "着法",
+    sideLine: "变着",
+    alternativesTitle: "此处还有其他着法",
+    alternativesDetail: "棋谱在这一步还有以下着法，要改走吗？",
+    playInstead: "改走 {move}",
+    flip: "翻转棋盘",
+    takeBack: "悔棋",
+    restart: "重新开始",
+    newPgn: "新棋谱",
+  },
+  status: {
+    yourMove: "轮到你走",
+    findMove: "请走出{side}第 {n} 步。",
+    sideWhite: "白方",
+    sideBlack: "黑方",
+    correct: "正确！",
+    variation: "正确 - 这是变着！",
+    opponentToMove: "对手走棋",
+    thinking: "对手正在思考...",
+    wrong: "这步不在棋谱中",
+    illegal: "这步不符合规则",
+    tryAgain: "再试一次。",
+    hintTitle: "正确着法在这里",
+    hintDetail: "把发光格子上的棋子拖到另一个发光格子。",
+    completeTitle: "全部完成！",
+    completeDetail: "你走完了所有着法。点击“重新开始”再练一遍。",
+  },
+};
+
+export default zh;

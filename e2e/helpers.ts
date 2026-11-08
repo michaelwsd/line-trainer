@@ -1,12 +1,23 @@
 import { expect, type Page } from "@playwright/test";
+import { mainLineFrom, parsePgnTree } from "../src/lib/pgn";
 import { SAMPLE_PGN } from "../src/lib/sample";
 
 export { SAMPLE_PGN };
 
-export async function startTraining(page: Page, color: "white" | "black", pgn = SAMPLE_PGN) {
-  await page.goto("/");
+const sample = parsePgnTree(SAMPLE_PGN);
+if (!sample.ok) throw new Error(sample.code);
+/** The sample's main line as move nodes (from, to, san, fen). */
+export const SAMPLE_MAIN = mainLineFrom(sample.tree.root);
+
+export async function startTraining(
+  page: Page,
+  color: "white" | "black",
+  { pgn = SAMPLE_PGN, opponent = "main" }: { pgn?: string; opponent?: "main" | "random" } = {},
+) {
+  await page.goto("/en");
   await page.getByLabel("Your game").fill(pgn);
   await page.getByText(color === "white" ? "You move first" : "Bot moves first").click();
+  if (opponent === "random") await page.getByText("Variations too").click();
   await page.getByRole("button", { name: "Start training" }).click();
   await expect(page.getByTestId("board")).toBeVisible();
 }
@@ -43,6 +54,14 @@ export async function expectPiece(page: Page, sq: string, pieceType: string | nu
   else await expect(piece(page, sq)).toHaveAttribute("data-piece", pieceType);
 }
 
-export async function expectProgress(page: Page, ply: number) {
-  await expect(page.getByTestId("progress")).toHaveText(new RegExp(`^${ply} / \\d+$`));
+export async function expectProgress(page: Page, ply: number, total?: number) {
+  await expect(page.getByTestId("progress")).toHaveText(new RegExp(`^${ply} / ${total ?? "\\d+"}$`));
+}
+
+/** Play the sample main line up to (not including) ply `until`, as `color`, waiting for each bot reply. */
+export async function playMainUntil(page: Page, color: "white" | "black", until: number) {
+  for (let i = color === "white" ? 0 : 1; i < until; i += 2) {
+    await drag(page, SAMPLE_MAIN[i].from, SAMPLE_MAIN[i].to);
+    await expectProgress(page, Math.min(i + 2, until));
+  }
 }

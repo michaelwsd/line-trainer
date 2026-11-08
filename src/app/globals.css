@@ -29,8 +29,10 @@
   --color-brass-bright: var(--brass-bright);
   --color-good: var(--good);
   --color-bad: var(--bad);
-  --font-sans: var(--font-inter);
-  --font-display: var(--font-playfair);
+  /* Latin web fonts first; CJK falls back to high-quality system fonts per platform. */
+  --font-sans:
+    var(--font-inter), "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+  --font-display: var(--font-playfair), "Songti SC", "STSong", "Noto Serif CJK SC", "SimSun", serif;
 }
 
 html {
@@ -69,7 +71,7 @@ body {
     radial-gradient(ellipse 80% 60% at 50% 0%, rgba(212, 169, 79, 0.08), transparent 70%),
     radial-gradient(ellipse at 50% 120%, var(--bg-deep), transparent 60%), var(--bg);
   color: var(--ink);
-  font-family: var(--font-inter), system-ui, sans-serif;
+  font-family: var(--font-sans);
 }
 
 /* Wooden frame around the board */
@@ -153,4 +155,13 @@ body {
     animation-duration: 1ms !important;
     animation-iteration-count: 1 !important;
   }
+}
+
+/* Small-caps style labels: tracked uppercase suits Latin, but CJK reads best unspaced. */
+.caps-label {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+:lang(zh) .caps-label {
+  letter-spacing: 0.02em;
 }
