@@ -1,26 +1,156 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #1c140e;
+  --bg-deep: #120c08;
+  --panel: #2a1f17;
+  --panel-raised: #33261c;
+  --line: rgba(232, 208, 166, 0.2);
+  --ink: #f7ecd6;
+  --ink-soft: #ddcbab;
+  --ink-faint: #b5a183;
+  --brass: #d4a94f;
+  --brass-bright: #e8c46c;
+  --good: #a8d488;
+  --bad: #ef8a72;
+  --sq-light: #eedcbb;
+  --sq-dark: #b08562;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel-raised: var(--panel-raised);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-brass: var(--brass);
+  --color-brass-bright: var(--brass-bright);
+  --color-good: var(--good);
+  --color-bad: var(--bad);
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-playfair);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+html {
+  color-scheme: dark;
+}
+
+/* The app is a single fixed-height screen: the page itself never scrolls. */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* Board area: a size container so the board is always the largest square that fits. */
+.board-area {
+  container-type: size;
+  height: min(calc(100vw - 2rem), calc(100svh - 20rem));
+  flex-shrink: 0;
+}
+@media (min-width: 1024px) {
+  .board-area {
+    height: auto;
+    flex: 1 1 0%;
+    min-width: 0;
+    min-height: 0;
   }
+}
+.board-size {
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(212, 169, 79, 0.08), transparent 70%),
+    radial-gradient(ellipse at 50% 120%, var(--bg-deep), transparent 60%), var(--bg);
+  color: var(--ink);
+  font-family: var(--font-inter), system-ui, sans-serif;
+}
+
+/* Wooden frame around the board */
+.board-frame {
+  width: 100%;
+  height: 100%;
+  padding: clamp(8px, 2cqmin, 20px);
+  border-radius: 10px;
+  background:
+    repeating-linear-gradient(
+      100deg,
+      rgba(255, 255, 255, 0.025) 0px,
+      rgba(255, 255, 255, 0.025) 2px,
+      transparent 2px,
+      transparent 7px
+    ),
+    linear-gradient(145deg, #6b4428 0%, #4a2d19 45%, #3a2213 100%);
+  box-shadow:
+    0 30px 60px -20px rgba(0, 0, 0, 0.75),
+    0 10px 20px -10px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 220, 170, 0.25),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.4);
+}
+
+.board-inner {
+  border-radius: 3px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.55),
+    0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes flash-a {
+  0%,
+  40% {
+    background-color: rgba(224, 82, 60, 0.7);
+  }
+  100% {
+    background-color: rgba(224, 82, 60, 0);
+  }
+}
+@keyframes flash-b {
+  0%,
+  40% {
+    background-color: rgba(224, 82, 60, 0.7);
+  }
+  100% {
+    background-color: rgba(224, 82, 60, 0);
+  }
+}
+@keyframes hint-pulse {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 4px rgba(96, 196, 72, 1);
+    background-color: rgba(110, 205, 80, 0.55);
+  }
+  50% {
+    box-shadow: inset 0 0 0 4px rgba(96, 196, 72, 0.6);
+    background-color: rgba(110, 205, 80, 0.3);
+  }
+}
+
+@keyframes status-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.status-in {
+  animation: status-in 180ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
