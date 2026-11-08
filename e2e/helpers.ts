@@ -12,7 +12,7 @@ export const SAMPLE_MAIN = mainLineFrom(sample.tree.root);
 export async function startTraining(page: Page, color: "white" | "black", { pgn = SAMPLE_PGN }: { pgn?: string } = {}) {
   await page.goto("/en");
   await page.getByLabel("Your game").fill(pgn);
-  await page.getByText(color === "white" ? "You move first" : "Bot moves first").click();
+  await page.getByText(color === "white" ? "White" : "Black", { exact: true }).click();
   await page.getByRole("button", { name: "Start training" }).click();
   await expect(page.getByTestId("board")).toBeVisible();
 }

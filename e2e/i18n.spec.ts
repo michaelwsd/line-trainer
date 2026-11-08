@@ -37,7 +37,7 @@ test.describe("Chinese UI", () => {
   test("full training flow works in Chinese", async ({ page }) => {
     await page.goto("/zh");
     await page.getByRole("button", { name: "加载示例" }).click();
-    await page.getByText("机器人先走").click();
+    await page.getByText("黑方", { exact: true }).click();
     await page.getByRole("button", { name: "开始训练" }).click();
     const status = page.getByTestId("status");
     await expectProgress(page, 1);
@@ -98,7 +98,7 @@ test.describe("language switcher", () => {
   test("switching on setup keeps the pasted PGN and chosen color", async ({ page }) => {
     await page.goto("/en");
     await page.getByLabel("Your game").fill("1. d4 d5 2. c4 *");
-    await page.getByText("Bot moves first").click();
+    await page.getByText("Black", { exact: true }).click();
     await page.getByRole("link", { name: "中文" }).click();
     await expect(page).toHaveURL(/\/zh$/);
     await expect(page.getByLabel("你的棋谱")).toHaveValue("1. d4 d5 2. c4 *");

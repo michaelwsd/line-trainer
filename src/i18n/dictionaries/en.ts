@@ -20,8 +20,6 @@ const en = {
     playAs: "Play as",
     white: "White",
     black: "Black",
-    whiteHint: "You move first",
-    blackHint: "Bot moves first",
     start: "Start training",
     errors: {
       empty: "Paste a PGN to get started.",

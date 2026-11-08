@@ -17,8 +17,6 @@ const zh: Dictionary = {
     playAs: "执棋方",
     white: "白方",
     black: "黑方",
-    whiteHint: "你先走",
-    blackHint: "机器人先走",
     start: "开始训练",
     errors: {
       empty: "请先粘贴 PGN 棋谱。",

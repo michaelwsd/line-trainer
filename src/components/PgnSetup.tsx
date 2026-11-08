@@ -110,10 +110,7 @@ export function PgnSetup({ pgn, color, onPgnChange, onColorChange, onStart }: Pr
                 >
                   {defaultPieces[c === "white" ? "wK" : "bK"]({ svgStyle: { width: "100%", height: "100%" } })}
                 </span>
-                <span className="flex flex-col">
-                  <span className="font-medium text-ink">{c === "white" ? t.white : t.black}</span>
-                  <span className="text-xs text-ink-soft">{c === "white" ? t.whiteHint : t.blackHint}</span>
-                </span>
+                <span className="font-medium text-ink">{c === "white" ? t.white : t.black}</span>
               </label>
             );
           })}
